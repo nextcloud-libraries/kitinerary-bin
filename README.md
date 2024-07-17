@@ -1,3 +1,8 @@
+<!--
+  - SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: LGPL-3.0-or-later
+-->
+
 # kitinerary-bin
 
 Binary executable adapter for the [kitinerary extractor package](https://packagist.org/packages/nextcloud/kitinerary). This package provides an adapter that invokes a shipped [kitinerary-extractor](https://github.com/KDE/itinerary) executable on x86_64 Linux systems.
