@@ -65,7 +65,7 @@ class BinaryAdapter implements Adapter, LoggerAwareInterface
 		];
 
 		$binPath = __DIR__ . '/../bin/kitinerary-extractor';
-		$proc = proc_open($binPath, $descriptors, $pipes);
+		$proc = proc_open([$binPath], $descriptors, $pipes);
 		if (!is_resource($proc)) {
 			$this->logger->warning('Could not open ' . realpath($binPath));
 			return false;
