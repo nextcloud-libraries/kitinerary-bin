@@ -15,19 +15,9 @@ jobs:
   static-build:
     name: Static build
     runs-on: ubuntu-latest
-    container:
-      image: centos:centos7
     steps:
-      - name: Install git
-        run: |
-          # CentOS 7 is EOL, mirrorlist.centos.org is gone. Point yum at the vault instead.
-          sed -i "s/^mirrorlist/#mirrorlist/" /etc/yum.repos.d/*.repo
-          sed -i "s,#baseurl=http://mirror.centos,baseurl=http://vault.centos," /etc/yum.repos.d/*.repo
-          yum -y remove git*
-          yum -y install https://packages.endpointdev.com/rhel/7/os/x86_64/endpoint-repo.x86_64.rpm
-          yum -y install git
       - name: Checkout kitinerary repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: 'KDE/kitinerary'
           fetch-depth: 0
@@ -36,31 +26,42 @@ jobs:
         id: version
         working-directory: kitinerary
         run: |
-          export KITINERARY_VERSION=$(git describe --tags --abbrev=0 --match=v*.*.*)
+          # git describe only finds tags that are ancestors of HEAD, but KDE
+          # cuts releases on separate release/* branches that never merge
+          # back into master, so it misses newer releases. Look at all tags
+          # instead, and ignore beta/RC tags (*.80/*.90 patch versions).
+          export KITINERARY_VERSION=$(git tag -l 'v*.*.*' | grep -vE '\.(8[0-9]|9[0-9])$' | sort -V | tail -1)
           echo "KITINERARY_VERSION=$KITINERARY_VERSION" >> "$GITHUB_OUTPUT"
           git checkout $KITINERARY_VERSION
       - name: Build
-        working-directory: kitinerary
         run: |
-          export BUILD_ROOT=/builds
-          export STAGING_ROOT=/builds/staging
-          scripts/setup-centos.sh
-          source /opt/rh/rh-git227/enable
-          source /opt/rh/devtoolset-11/enable
-          scripts/build-openssl.sh
-          scripts/build-iso-codes.sh
-          scripts/build-static-qt.sh
-          scripts/build-cmake-modules.sh
-          scripts/collect-data-files.sh
-          strip /builds/pim/kitinerary/build/bin/kitinerary-extractor
-        env:
-          CI_PROJECT_PATH: pim/kitinerary
+          mkdir -p "$GITHUB_WORKSPACE/builds"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/kitinerary:/kitinerary" \
+            -v "$GITHUB_WORKSPACE/builds:/builds" \
+            -e BUILD_ROOT=/builds \
+            -e STAGING_ROOT=/builds/staging \
+            -e CI_PROJECT_PATH=pim/kitinerary \
+            -w /kitinerary \
+            centos:centos7 \
+            bash -c '
+              set -e
+              scripts/setup-centos.sh
+              source /opt/rh/rh-git227/enable
+              source /opt/rh/devtoolset-11/enable
+              scripts/build-openssl.sh
+              scripts/build-iso-codes.sh
+              scripts/build-static-qt.sh
+              scripts/build-cmake-modules.sh
+              scripts/collect-data-files.sh
+              strip /builds/pim/kitinerary/build/bin/kitinerary-extractor
+            '
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: kitinerary-bin
       - name: Copy artifact
-        run: cp /builds/pim/kitinerary/build/bin/kitinerary-extractor kitinerary-bin/bin/kitinerary-extractor
+        run: cp "$GITHUB_WORKSPACE/builds/pim/kitinerary/build/bin/kitinerary-extractor" kitinerary-bin/bin/kitinerary-extractor
       - name: Create pull request
         uses: peter-evans/create-pull-request@v5
         with:
