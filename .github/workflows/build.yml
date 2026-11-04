@@ -33,6 +33,24 @@ jobs:
           export KITINERARY_VERSION=$(git tag -l 'v*.*.*' | grep -vE '\.(8[0-9]|9[0-9])$' | sort -V | tail -1)
           echo "KITINERARY_VERSION=$KITINERARY_VERSION" >> "$GITHUB_OUTPUT"
           git checkout $KITINERARY_VERSION
+      - name: Pin KDE PIM dependency versions
+        id: deps
+        run: |
+          # scripts/build-cmake-modules.sh builds pim/kmime and pim/kpkpass
+          # from their master branch, and kitinerary itself the same way
+          # unless pre-seeded (see Build step). Their master requirements
+          # drift ahead of the KF_VERSION pinned in that script, so pin
+          # them to their own latest real release tags instead.
+          KMIME_VERSION=$(git ls-remote --tags https://invent.kde.org/pim/kmime.git | sed 's/.*refs\/tags\///' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vE '\.(8[0-9]|9[0-9])$' | sort -V | tail -1)
+          KPKPASS_VERSION=$(git ls-remote --tags https://invent.kde.org/pim/kpkpass.git | sed 's/.*refs\/tags\///' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vE '\.(8[0-9]|9[0-9])$' | sort -V | tail -1)
+          echo "KMIME_VERSION=$KMIME_VERSION" >> "$GITHUB_OUTPUT"
+          echo "KPKPASS_VERSION=$KPKPASS_VERSION" >> "$GITHUB_OUTPUT"
+          # The KF_VERSION pinned in this release's build-cmake-modules.sh
+          # (ECM & co.) is sometimes too old for kitinerary's own declared
+          # KF_MIN_VERSION. Bump it, but stay below v6.31.0, where kcodecs
+          # started requiring C++20 <format>, unavailable in CentOS 7's
+          # devtoolset-11 (GCC 11).
+          sed -i 's/^KF_VERSION=.*/KF_VERSION="v6.28.0"/' kitinerary/scripts/build-cmake-modules.sh
       - name: Build
         run: |
           mkdir -p "$GITHUB_WORKSPACE/builds"
@@ -42,18 +60,34 @@ jobs:
             -e BUILD_ROOT=/builds \
             -e STAGING_ROOT=/builds/staging \
             -e CI_PROJECT_PATH=pim/kitinerary \
+            -e KMIME_VERSION="${{ steps.deps.outputs.KMIME_VERSION }}" \
+            -e KPKPASS_VERSION="${{ steps.deps.outputs.KPKPASS_VERSION }}" \
             -w /kitinerary \
             centos:centos7 \
             bash -c '
               set -e
               scripts/setup-centos.sh
+              yum -y install libmount-devel
               source /opt/rh/rh-git227/enable
               source /opt/rh/devtoolset-11/enable
               scripts/build-openssl.sh
               scripts/build-iso-codes.sh
               scripts/build-static-qt.sh
+              # Pre-seed pim/kmime, pim/kpkpass at their real release tags
+              # and pim/kitinerary with our already-checked-out release tag.
+              # build_cmake_module (in build-cmake-modules.sh) only clones
+              # a module if its directory does not already exist, so this
+              # makes it reuse these instead of cloning master.
+              mkdir -p /builds/pim
+              git clone --branch "$KMIME_VERSION" --depth 1 https://invent.kde.org/pim/kmime /builds/pim/kmime
+              git clone --branch "$KPKPASS_VERSION" --depth 1 https://invent.kde.org/pim/kpkpass /builds/pim/kpkpass
+              cp -r /kitinerary /builds/pim/kitinerary
               scripts/build-cmake-modules.sh
-              scripts/collect-data-files.sh
+              # Removed from newer kitinerary releases; data files are
+              # installed as part of the normal build/install now.
+              if [ -f scripts/collect-data-files.sh ]; then
+                scripts/collect-data-files.sh
+              fi
               strip /builds/pim/kitinerary/build/bin/kitinerary-extractor
             '
       - name: Checkout
