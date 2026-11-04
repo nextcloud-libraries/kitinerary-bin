@@ -20,6 +20,9 @@ jobs:
     steps:
       - name: Install git
         run: |
+          # CentOS 7 is EOL, mirrorlist.centos.org is gone. Point yum at the vault instead.
+          sed -i "s/^mirrorlist/#mirrorlist/" /etc/yum.repos.d/*.repo
+          sed -i "s,#baseurl=http://mirror.centos,baseurl=http://vault.centos," /etc/yum.repos.d/*.repo
           yum -y remove git*
           yum -y install https://packages.endpointdev.com/rhel/7/os/x86_64/endpoint-repo.x86_64.rpm
           yum -y install git
