@@ -93,6 +93,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          # Pin explicitly: this workflow is often manually re-dispatched
+          # against a non-default ref while testing it, and without this
+          # the PR created below would target that ref as its base instead
+          # of the default branch.
+          ref: ${{ github.event.repository.default_branch }}
           path: kitinerary-bin
       - name: Copy artifact
         run: cp "$GITHUB_WORKSPACE/builds/pim/kitinerary/build/bin/kitinerary-extractor" kitinerary-bin/bin/kitinerary-extractor
